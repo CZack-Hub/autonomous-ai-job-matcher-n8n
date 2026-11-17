@@ -1,0 +1,671 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## PHASE 1: Resume Parsing & Live India LinkedIn Job Matching\nIngests candidate PDF, role & experience level, scrapes filtered LinkedIn India openings, scores top 5 matches via Gemini, and logs to Google Sheets.",
+        "height": 280,
+        "width": 1760,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        208,
+        368
+      ],
+      "id": "3a6b13e3-34c2-407f-9e82-2f64ba208b0b",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## PHASE 2: Interactive Selection & Cover Letter Generator\nPresents matched jobs in a dynamic dropdown, drafts a tailored cover letter, logs application, and displays remaining matches.",
+        "height": 280,
+        "width": 1240,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        208,
+        704
+      ],
+      "id": "34474d88-042b-47c9-8cb2-93df6ab03445",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "formTitle": "AI Job Matcher",
+        "formDescription": "Upload your resume and select your experience level to find live matching jobs",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Resume",
+              "fieldType": "file",
+              "acceptFileTypes": ".pdf",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Target_Role",
+              "placeholder": "Software Engineer",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Experience_Level",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Fresher (0-2 Years)"
+                  },
+                  {
+                    "option": "Intermediate (2-5 Years)"
+                  },
+                  {
+                    "option": "Senior (5+ Years)"
+                  }
+                ]
+              },
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        272,
+        464
+      ],
+      "id": "72877435-4327-4d04-bcbe-8a435e083aec",
+      "name": "On form submission",
+      "webhookId": "2d69070e-728d-435d-9537-9c826a5f3419"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "Resume",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.2,
+      "position": [
+        496,
+        464
+      ],
+      "id": "e9a4d4f5-8b3a-4473-915f-55e3be30133f",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "url": "=https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={{ encodeURIComponent($('On form submission').item.json.Target_Role || 'Software Engineer') }}&location=India&f_E={{ $('On form submission').item.json.Experience_Level.includes('Fresher') ? '1%2C2' : ($('On form submission').item.json.Experience_Level.includes('Intermediate') ? '3' : '4') }}&start=0",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        704,
+        464
+      ],
+      "id": "998dfcb5-7a6c-469e-b6d7-113f90cf5be6",
+      "name": "Fetch Live Jobs"
+    },
+    {
+      "parameters": {
+        "operation": "extractHtmlContent",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "title",
+              "cssSelector": ".base-search-card__title",
+              "returnArray": true
+            },
+            {
+              "key": "company",
+              "cssSelector": ".base-search-card__subtitle",
+              "returnArray": true
+            },
+            {
+              "key": "url",
+              "cssSelector": "a.base-card__full-link",
+              "returnValue": "attribute",
+              "attribute": "href",
+              "returnArray": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        912,
+        464
+      ],
+      "id": "0588015c-8bfd-49d3-b4c3-1f490584ad83",
+      "name": "HTML"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst titles = data.title || [];\nconst companies = data.company || [];\nconst urls = data.url || [];\n\nconst jobs = [];\nfor (let i = 0; i < Math.min(titles.length, 20); i++) {\n  const cleanUrl = (urls[i] || '').split('?')[0];\n  const idMatch = cleanUrl.match(/-(\\d+)$/);\n  jobs.push({\n    id: idMatch ? idMatch[1] : String(100000 + i),\n    title: (titles[i] || '').trim(),\n    company: (companies[i] || '').trim(),\n    url: cleanUrl\n  });\n}\n\nif (jobs.length === 0) {\n  throw new Error('No LinkedIn jobs returned for this query. Try a broader Target Role.');\n}\n\nreturn [{ json: { jobs } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        464
+      ],
+      "id": "eaba2ad3-136e-46e4-87ee-1bfd26a7533a",
+      "name": "Format LinkedIn Jobs"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3.5-flash-lite",
+          "mode": "list",
+          "cachedResultName": "Gemini 3.5 Flash Lite"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Pick the TOP 5 best matching jobs for this candidate from the list below.\nReturn ONLY a raw JSON array of 5 objects with keys: \"job_id\", \"title\", \"company\", \"match_score\", \"reason\", \"url\", \"resume_summary\".\nKeep \"reason\" and \"resume_summary\" under 8 words each with no double quotes.\n\nTarget Role: {{ $('On form submission').item.json.Target_Role }}\nExperience Level: {{ $('On form submission').item.json.Experience_Level }}\nResume: {{ $('Extract from File').item.json.text.slice(0, 1500) }}\nJobs: {{ JSON.stringify($json.jobs) }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        1328,
+        464
+      ],
+      "id": "38aec71d-0487-4596-80d3-c4ee4e87df4f",
+      "name": "AI Job Matcher",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "CNdkql6M3kbNhcNq",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nlet rawText = item.text || item.content?.parts?.[0]?.text || JSON.stringify(item);\n\nrawText = rawText.replace(/```json|```/g, '').trim();\n\nconst matches = [];\nconst objRegex = /\\{[^{}]*\\}/g;\nlet m;\nwhile ((m = objRegex.exec(rawText)) !== null) {\n  try {\n    const parsed = JSON.parse(m[0]);\n    if (parsed.title && parsed.company) {\n      matches.push(parsed);\n    }\n  } catch (e) {\n    // Skip malformed/truncated trailing object\n  }\n}\n\nif (matches.length === 0) {\n  throw new Error('No valid job objects found in AI response: ' + rawText.slice(0, 300));\n}\n\nreturn matches.slice(0, 5).map(job => ({ json: job }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1616,
+        464
+      ],
+      "id": "d7aa50d9-3c8f-4c3a-91c4-9901d23a660a",
+      "name": "Parse Top 5 JSON"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "AI Job Matcher",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Matched Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Job_ID": "={{ $json.job_id }}",
+            "Title": "={{ $json.title }}",
+            "Company": "={{ $json.company }}",
+            "Match_Score": "={{ $json.match_score }}",
+            "Reason": "={{ $json.reason }}",
+            "URL": "={{ $json.url }}",
+            "Resume_Summary": "={{ $json.resume_summary }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Job_ID",
+              "displayName": "Job_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Title",
+              "displayName": "Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Match_Score",
+              "displayName": "Match_Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reason",
+              "displayName": "Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "URL",
+              "displayName": "URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Resume_Summary",
+              "displayName": "Resume_Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1776,
+        464
+      ],
+      "id": "64e4332b-ef54-410a-b0f4-d33c1a51716d",
+      "name": "Save Matched Jobs",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "0C10AFAFZN8FblJN",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        272,
+        800
+      ],
+      "id": "850eb0f4-0e25-4aac-9425-041612973587",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "defineForm": "json",
+        "jsonOutput": "={{ [\n  {\n    \"fieldLabel\": \"Select a Job to Generate Application\",\n    \"fieldName\": \"selected_job\",\n    \"fieldType\": \"dropdown\",\n    \"requiredField\": true,\n    \"fieldOptions\": {\n      \"values\": $json.data.map(job => ({\n        \"option\": job.Title + \" at \" + job.Company + \" (\" + job.Match_Score + \" match) | ID:\" + job.Job_ID\n      }))\n    }\n  }\n] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        496,
+        800
+      ],
+      "id": "ba4a45e4-4d2b-4e84-b76a-aad8b67dfb76",
+      "name": "Form",
+      "webhookId": "75017886-be53-4628-aee6-2489346fa878"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3.5-flash-lite",
+          "mode": "list",
+          "cachedResultName": "Gemini 3.5 Flash Lite"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Write a concise, persuasive cover letter (max 180 words) and 2 short bullet points answering \"Why I am a great fit for this role\" based on the candidate's experience level ({{ $('On form submission').item.json.Experience_Level }}) and the details below. Return plain text only.\n\n{{ $json.selected_job }} and {{ $('Extract from File').item.json.text }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        704,
+        800
+      ],
+      "id": "aa61326e-e852-426e-ad3a-67eb78c9c316",
+      "name": "Draft Cover Letter",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "CNdkql6M3kbNhcNq",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "AI Job Matcher",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2141596749,
+          "mode": "list",
+          "cachedResultName": "Applications",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=2141596749"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Job_ID": "={{ $('Form').item.json.selected_job.split('| ID:')[1].trim() }}",
+            "Title": "={{ $('Aggregate').item.json.data.find(j => String(j.Job_ID) === $('Form').item.json.selected_job.split('| ID:')[1].trim()).Title }}",
+            "Company": "={{ $('Aggregate').item.json.data.find(j => String(j.Job_ID) === $('Form').item.json.selected_job.split('| ID:')[1].trim()).Company }}",
+            "Status": "Application Generated!",
+            "Apply_URL": "={{ $('Aggregate').item.json.data.find(j => String(j.Job_ID) === $('Form').item.json.selected_job.split('| ID:')[1].trim()).URL }}",
+            "Tailored_Cover_Letter": "={{ $json.content.parts[0].text }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Job_ID",
+              "displayName": "Job_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Title",
+              "displayName": "Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Tailored_Cover_Letter",
+              "displayName": "Tailored_Cover_Letter",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Apply_URL",
+              "displayName": "Apply_URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        976,
+        800
+      ],
+      "id": "8d8ad6a0-fe10-4b49-912e-a2771c0c6983",
+      "name": "Save Application",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "0C10AFAFZN8FblJN",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Successfully Done!",
+        "completionMessage": "={{ $json.Tailored_Cover_Letter }}\n\nApply directly to your selected role:\n{{ $json.Apply_URL }}\n\n----------------------------------------\nOther Matched Companies You Can Also Apply To:\n{{ $('Aggregate').item.json.data.filter(j => String(j.Job_ID) !== String($json.Job_ID)).map((j, idx) => `${idx + 1}. ${j.Title} at ${j.Company} (${j.Match_Score} match)\n   Apply: ${j.URL}`).join('\\n') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        1152,
+        800
+      ],
+      "id": "697aebb3-bcbc-461a-9a68-6822fa048ade",
+      "name": "Display Final Application",
+      "webhookId": "66111f6d-9422-4e92-bb80-8b99663182eb"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Fetch Live Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Live Jobs": {
+      "main": [
+        [
+          {
+            "node": "HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML": {
+      "main": [
+        [
+          {
+            "node": "Format LinkedIn Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format LinkedIn Jobs": {
+      "main": [
+        [
+          {
+            "node": "AI Job Matcher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Job Matcher": {
+      "main": [
+        [
+          {
+            "node": "Parse Top 5 JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Top 5 JSON": {
+      "main": [
+        [
+          {
+            "node": "Save Matched Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Matched Jobs": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Form": {
+      "main": [
+        [
+          {
+            "node": "Draft Cover Letter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Cover Letter": {
+      "main": [
+        [
+          {
+            "node": "Save Application",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Application": {
+      "main": [
+        [
+          {
+            "node": "Display Final Application",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "2f7efa10-2133-478e-b25b-2f87aa60e2d6",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "61f6734ada3e1664e0304310a7ab39d65a772fafa53cad4a283a502d650f7035"
+  },
+  "nodeGroups": [],
+  "id": "8wfVaMUKYvweB0BY",
+  "tags": []
+}
